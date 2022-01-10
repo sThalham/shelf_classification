@@ -5,8 +5,6 @@ Benjamin Gallauner, Stefan Thalhammer, and Markus Vincze.
 
 status: BibTex to come
 
-%[//]: # (@INPROCEEDINGS{, author={S. {Thalhammer} and T. {PaEnabling Classification of Heavily-occluded Objects through Class-agnostic Image Manipulationtten} and M. {Vincze}}, booktitle={}, title={PyraPose: Feature Pyramids for Fast and Accurate Object Pose Estimation under Domain Shift}, year={2021})
-
 ## 1. Class-agnostic object segmentation
 To improve classification performance on heavily occluded shelves class agnostic segmentation is used to generate object masks.  
 For this task Detectron (Mask-RCNN) was trained with the YCB video Dataset.  
