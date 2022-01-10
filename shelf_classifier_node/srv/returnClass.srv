@@ -1,0 +1,4 @@
+---
+std_msgs/Header header
+std_msgs/String classification
+std_msgs/Float32 confidence
