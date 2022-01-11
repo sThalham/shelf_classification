@@ -5,7 +5,7 @@ import os
 import inspect
 
 import rospy
-from std_msgs.msg import String, Header
+from std_msgs.msg import String, Header, Float32
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -100,14 +100,16 @@ class ServiceClassification:
         return msg
 
     def fill_msg(self, classification, confidence):
-        msg = returnClass()
-        msg.header.frame_id = self.frame_id
-        msg.header.stamp = self.time
-        msg.header.seq = self.seq
-        msg.classification = classification
-        msg.confidence = confidence
+        header = Header()
+        cls = String()
+        cnf = Float32()
+        header.frame_id = self.frame_id
+        header.stamp = self.time
+        header.seq = self.seq
+        cls.data = classification
+        cnf.data = confidence
         
-        return msg
+        return [header, cls, cnf]
 
 
 if __name__ == '__main__':
