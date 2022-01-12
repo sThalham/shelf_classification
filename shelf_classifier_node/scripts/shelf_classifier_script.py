@@ -90,7 +90,7 @@ class ServiceClassification:
         self._msg = np.frombuffer(data.data, dtype=np.uint8).reshape((data.height, data.width, -1))
         #self._msg = self.bridge.imgmsg_to_cv2(data, "8UC3")        
         img_rgb = cv2.resize(self._msg, (224, 168))
-        img_rgb = cv2.cvtColor(self._msg, cv2.COLOR_BGR2RGB).astype("float32") / 255.0
+        img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB).astype("float32") / 255.0
         class_result = self._model.predict(img_rgb[np.newaxis, ...])
         prediction = np.argmax(class_result)
         confidence = class_result[0][prediction]
