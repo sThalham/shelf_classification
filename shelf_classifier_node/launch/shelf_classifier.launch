@@ -4,6 +4,7 @@
     <param name="model_path" value="/shelf_classifier/classify_images/model_weights/aug_combined_no_segment.h5" />
     <param name="model_type" value="classifier" type="string"/>
     <param name="image_topic" value="/image_publisher_1641811871536764382/image_raw" />
+    <param name="barcode_topic" value="/image_publisher_afasfsdadasdadad/
     <param name="detection_threshold" value="0.5" type="double" />
     <param name="node_type" value="service" type="string" />
     <param name="service_call" value="/shelf_classifier/returnClass" />

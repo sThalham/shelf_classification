@@ -6,7 +6,8 @@ import inspect
 
 import rospy
 from std_msgs.msg import String, Header, Float32
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CameraInfo
+from geometry_msgs import Pose, PoseStamped
 from cv_bridge import CvBridge, CvBridgeError
 
 from shelf_classifier_node.srv import returnClass
@@ -31,16 +32,42 @@ class ContinuousClassification:
         
         self.bridge = CvBridge()
         self.topic = topic
+        
         self.image_sub = rospy.Subscriber(topic, Image, self.callback)
+        self.barcode_sub = rospy.Subscriber(self.barcode_topic, Barcode, self.barcode_callback)
+        self.intrinsics_sub = rospy.Subscriber(self.intrinsics_topic, CameraInfo, self.intrinsics_callback)
+        
         self.cls_pub = rospy.Publisher("/shelf_classifier/class", String, queue_size=10)
         self.header_pub = rospy.Publisher("/shelf_classifier/header", Header, queue_size=10)
+
+    def intrinsics_callback(self, data)
+    	self.fx = data.K[0]
+    	self.fy = data.K[4]
+    	self.cx = data.K[2]
+    	self.cy = data.K[5]
+        
+    def barcode_callback(self, data):
+        x = data.pose.position.x
+        y = data.pose.position.y
+        z = data.pose.position.z
+        
+        self.barcode = np.array([x, y, z], dtype=np.float32)
 
     def callback(self, data):
         self.seq = data.header.seq
         self.time = data.header.stamp
         self.frame_id = data.header.frame_id
         self._msg = np.frombuffer(data.data, dtype=np.uint8).reshape((data.height, data.width, -1))
-        #self._msg = self.bridge.imgmsg_to_cv2(data, "8UC3")        
+        #self._msg = self.bridge.imgmsg_to_cv2(data, "8UC3")    
+        
+        u = (self.fx * x) / z
+        v = (self.fy * y) / z
+        hwin_x = (self.fx * 0.08) / z
+        hwin_y = (self.fy * 0.06) / z
+
+        img = np.pad(self._msg, ((1000, 1000), (1000, 1000), (0,0)), 'edge')
+        img = img[int(1000 + self.cy + v - hwin_y):int(1000+ self.cy + v + hwin_y), int(1000 + self.cx + u - hwin_x):int(1000 + self.cx + u + hwin_x), :]
+            
         img_rgb = cv2.resize(self._msg, (224, 168))
         img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB).astype("float32") / 255.0
         class_result = self._model.predict(img_rgb[np.newaxis, ...])
@@ -62,7 +89,7 @@ class ContinuousClassification:
 
 
 class ServiceClassification:
-    def __init__(self, model, classes, topic, service_name):
+    def __init__(self, model, classes, image_topic, barcode_topic, intri_topic, service_name):
         #event that will block until the info is received
         #attribute for storing the rx'd message
         self._model = model
@@ -73,12 +100,29 @@ class ServiceClassification:
         self.time = None
         self.frame_id = None
         self.bridge = CvBridge()
-        self.topic = topic
+        self.image_topic = image_topic
+        self.barcode_topic = barcode_topic
+        self.intrinsics_topic = intri_topic
         self.srv = rospy.Service(service_name, returnClass, self.callback)
-        self.image_sub = rospy.Subscriber(self.topic, Image, self.image_callback)
+        self.image_sub = rospy.Subscriber(self.image_topic, Image, self.image_callback)
+        self.barcode_sub = rospy.Subscriber(self.barcode_topic, Barcode, self.barcode_callback)
+        self.intrinsics_sub = rospy.Subscriber(self.intrinsics_topic, CameraInfo, self.intrinsics_callback)
+        
+    def intrinsics_callback(self, data)
+    	self.fx = data.K[0]
+    	self.fy = data.K[4]
+    	self.cx = data.K[2]
+    	self.cy = data.K[5]
         
     def image_callback(self, data):
         self.image = data
+        
+    def barcode_callback(self, data):
+        x = data.pose.position.x
+        y = data.pose.position.y
+        z = data.pose.position.z
+        
+        self.barcode = np.array([x, y, z], dtype=np.float32)
 
     def callback(self, req):
         #print(data)
@@ -89,7 +133,16 @@ class ServiceClassification:
         self.frame_id = data.header.frame_id
         self._msg = np.frombuffer(data.data, dtype=np.uint8).reshape((data.height, data.width, -1))
         #self._msg = self.bridge.imgmsg_to_cv2(data, "8UC3")        
-        img_rgb = cv2.resize(self._msg, (224, 168))
+        
+        u = (self.fx * x) / z
+        v = (self.fy * y) / z
+        hwin_x = (self.fx * 0.08) / z
+        hwin_y = (self.fy * 0.06) / z
+
+        img = np.pad(self._msg, ((1000, 1000), (1000, 1000), (0,0)), 'edge')
+        img = img[int(1000 + self.cy + v - hwin_y):int(1000+ self.cy + v + hwin_y), int(1000 + self.cx + u - hwin_x):int(1000 + self.cx + u + hwin_x), :]
+
+        img_rgb = cv2.resize(img, (224, 168))
         img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB).astype("float32") / 255.0
         class_result = self._model.predict(img_rgb[np.newaxis, ...])
         prediction = np.argmax(class_result)
