@@ -7,7 +7,8 @@ import inspect
 import rospy
 from std_msgs.msg import String, Header, Float32
 from sensor_msgs.msg import Image, CameraInfo
-from geometry_msgs import Pose, PoseStamped
+from refills_msgs.msg import Barcode
+from geometry_msgs.msg import Pose, PoseStamped
 from cv_bridge import CvBridge, CvBridgeError
 
 from shelf_classifier_node.srv import returnClass
@@ -24,56 +25,62 @@ import ros_numpy
 
 
 class ContinuousClassification:
-    def __init__(self, model, classes, topic):
+    def __init__(self, model, classes, img_topic, cam_topic, bar_topic):
         #event that will block until the info is received
         #attribute for storing the rx'd message
         self._model = model
         self._classes = classes
         
         self.bridge = CvBridge()
-        self.topic = topic
+        self.img_topic = img_topic
+        self.cam_topic = cam_topic
+        self.barcode_topic = bar_topic
+        self.barcode = None
         
-        self.image_sub = rospy.Subscriber(topic, Image, self.callback)
+        self.image_sub = rospy.Subscriber(self.img_topic, Image, self.callback)
         self.barcode_sub = rospy.Subscriber(self.barcode_topic, Barcode, self.barcode_callback)
-        self.intrinsics_sub = rospy.Subscriber(self.intrinsics_topic, CameraInfo, self.intrinsics_callback)
+        self.intrinsics_sub = rospy.Subscriber(self.cam_topic, CameraInfo, self.intrinsics_callback)
         
         self.cls_pub = rospy.Publisher("/shelf_classifier/class", String, queue_size=10)
         self.header_pub = rospy.Publisher("/shelf_classifier/header", Header, queue_size=10)
 
-    def intrinsics_callback(self, data)
+    def intrinsics_callback(self, data):
     	self.fx = data.K[0]
     	self.fy = data.K[4]
     	self.cx = data.K[2]
     	self.cy = data.K[5]
         
     def barcode_callback(self, data):
-        x = data.pose.position.x
-        y = data.pose.position.y
-        z = data.pose.position.z
+        x = data.barcode_pose.pose.position.x
+        y = data.barcode_pose.pose.position.y
+        z = data.barcode_pose.pose.position.z
         
         self.barcode = np.array([x, y, z], dtype=np.float32)
 
     def callback(self, data):
+        #rospy.wait_for_message(self.img_topic, Image)
+        #rospy.wait_for_message(self.barcode_topic, Barcode)
+        #rospy.wait_for_message(self.cam_topic, CameraInfo)
         self.seq = data.header.seq
         self.time = data.header.stamp
         self.frame_id = data.header.frame_id
         self._msg = np.frombuffer(data.data, dtype=np.uint8).reshape((data.height, data.width, -1))
         #self._msg = self.bridge.imgmsg_to_cv2(data, "8UC3")    
         
-        u = (self.fx * x) / z
-        v = (self.fy * y) / z
-        hwin_x = (self.fx * 0.08) / z
-        hwin_y = (self.fy * 0.06) / z
+        u = (self.fx * self.barcode[0]) / self.barcode[2]
+        v = (self.fy * self.barcode[1]) / self.barcode[2]
+        hwin_x = (self.fx * 0.08) / self.barcode[2]
+        hwin_y = (self.fy * 0.06) / self.barcode[2]
 
         img = np.pad(self._msg, ((1000, 1000), (1000, 1000), (0,0)), 'edge')
         img = img[int(1000 + self.cy + v - hwin_y):int(1000+ self.cy + v + hwin_y), int(1000 + self.cx + u - hwin_x):int(1000 + self.cx + u + hwin_x), :]
             
-        img_rgb = cv2.resize(self._msg, (224, 168))
+        img_rgb = cv2.resize(img, (224, 168))
+        
         img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB).astype("float32") / 255.0
         class_result = self._model.predict(img_rgb[np.newaxis, ...])
         prediction = np.argmax(class_result)
         classification = str(self._classes[prediction])
-
 
         self.publish_class(classification)
 
@@ -89,7 +96,7 @@ class ContinuousClassification:
 
 
 class ServiceClassification:
-    def __init__(self, model, classes, image_topic, barcode_topic, intri_topic, service_name):
+    def __init__(self, model, classes, image_topic, intri_topic, barcode_topic, service_name):
         #event that will block until the info is received
         #attribute for storing the rx'd message
         self._model = model
@@ -108,25 +115,27 @@ class ServiceClassification:
         self.barcode_sub = rospy.Subscriber(self.barcode_topic, Barcode, self.barcode_callback)
         self.intrinsics_sub = rospy.Subscriber(self.intrinsics_topic, CameraInfo, self.intrinsics_callback)
         
-    def intrinsics_callback(self, data)
+    def intrinsics_callback(self, data):
     	self.fx = data.K[0]
     	self.fy = data.K[4]
     	self.cx = data.K[2]
     	self.cy = data.K[5]
-        
+
     def image_callback(self, data):
         self.image = data
         
     def barcode_callback(self, data):
-        x = data.pose.position.x
-        y = data.pose.position.y
-        z = data.pose.position.z
+        x = data.barcode_pose.pose.position.x
+        y = data.barcode_pose.pose.position.y
+        z = data.barcode_pose.pose.position.z
         
         self.barcode = np.array([x, y, z], dtype=np.float32)
 
     def callback(self, req):
         #print(data)
-        rospy.wait_for_message(self.topic, Image)
+        rospy.wait_for_message(self.image_topic, Image)
+        rospy.wait_for_message(self.barcode_topic, Barcode)
+        rospy.wait_for_message(self.intrinsics_topic, CameraInfo)
         data = self.image
         self.seq = data.header.seq
         self.time = data.header.stamp
@@ -134,10 +143,10 @@ class ServiceClassification:
         self._msg = np.frombuffer(data.data, dtype=np.uint8).reshape((data.height, data.width, -1))
         #self._msg = self.bridge.imgmsg_to_cv2(data, "8UC3")        
         
-        u = (self.fx * x) / z
-        v = (self.fy * y) / z
-        hwin_x = (self.fx * 0.08) / z
-        hwin_y = (self.fy * 0.06) / z
+        u = (self.fx * self.barcode[0]) / self.barcode[2]
+        v = (self.fy * self.barcode[1]) / self.barcode[2]
+        hwin_x = (self.fx * 0.08) / self.barcode[2]
+        hwin_y = (self.fy * 0.06) / self.barcode[2]
 
         img = np.pad(self._msg, ((1000, 1000), (1000, 1000), (0,0)), 'edge')
         img = img[int(1000 + self.cy + v - hwin_y):int(1000+ self.cy + v + hwin_y), int(1000 + self.cx + u - hwin_x):int(1000 + self.cx + u + hwin_x), :]
@@ -148,7 +157,6 @@ class ServiceClassification:
         prediction = np.argmax(class_result)
         confidence = class_result[0][prediction]
         classification = str(self._classes[prediction])
-        print('Classified image as ', classification, ' with confidence: ', confidence)
         msg = self.fill_msg(classification, confidence)
         return msg
 
@@ -198,6 +206,12 @@ if __name__ == '__main__':
     if rospy.has_param('/shelf_classifier/image_topic'):
         msg_topic = rospy.get_param("/shelf_classifier/image_topic")
         print("Subscribing to msg topic: ", msg_topic)
+    if rospy.has_param('/shelf_classifier/camera_info'):
+        cam_topic = rospy.get_param("/shelf_classifier/camera_info")
+        print("Subscribing to camera topic: ", cam_topic)
+    if rospy.has_param('/shelf_classifier/barcode_topic'):
+        bar_topic = rospy.get_param("/shelf_classifier/barcode_topic")
+        print("Subscribing to barcode topic: ", bar_topic)
     if rospy.has_param('/shelf_classifier/detection_threshold'):
         detection_threshold = rospy.get_param("/shelf_classifier/detection_threshold")
         print('Detection threshold set to: ', detection_threshold)
@@ -218,10 +232,10 @@ if __name__ == '__main__':
     try:
         if rospy.get_param('/shelf_classifier/node_type') == 'continuous':
             print("node type set to continuous")
-            shelf_classification = ContinuousClassification(classifier, classes, msg_topic)
+            shelf_classification = ContinuousClassification(classifier, classes, msg_topic, cam_topic, bar_topic)
         elif rospy.get_param('/shelf_classifier/node_type') == 'service':
             print("node type set to service")
-            shelf_classification = ServiceClassification(classifier, classes, msg_topic, service_name)
+            shelf_classification = ServiceClassification(classifier, classes, msg_topic, cam_topic, bar_topic, service_name)
     except KeyError:
         print("node_type should either be continuous or service.")
 

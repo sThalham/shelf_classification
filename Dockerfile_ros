@@ -1,0 +1,27 @@
+FROM ros:noetic
+
+RUN apt-get update && apt-get install -y \
+        build-essential \
+        ros-noetic-image-publisher \
+        ros-noetic-ros-numpy \
+        python3-catkin-tools \
+        python3-dev \
+        python3-numpy \
+        python3-pip \
+        vim && \ 
+    rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install setuptools \
+        rospkg \
+        rosnumpy \
+        tensorflow==2.7.0 \
+        catkin_pkg \
+        scikit-build \
+        cmake 
+
+RUN mkdir -p /catkin_ws/src
+WORKDIR /catkin_ws
+
+RUN /bin/bash -c '. /opt/ros/noetic/setup.bash; cd /catkin_ws; catkin_make'
+
+RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc

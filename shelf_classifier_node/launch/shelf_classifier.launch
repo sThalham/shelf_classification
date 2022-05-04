@@ -1,10 +1,11 @@
 <launch>
   <node name="shelf_classifier" pkg="shelf_classifier_node" type="shelf_classifier_script.py" output="screen">    
-    <param name="repository_path" value="/home/stefan/shelf_classifier" />
-    <param name="model_path" value="/shelf_classifier/classify_images/model_weights/aug_combined_no_segment.h5" />
+    <param name="repository_path" value="/shelf_classifier" />
+    <param name="model_path" value="/shelf_classifier/classifier_training/best.h5" />
     <param name="model_type" value="classifier" type="string"/>
-    <param name="image_topic" value="/image_publisher_1641811871536764382/image_raw" />
-    <param name="barcode_topic" value="/image_publisher_afasfsdadasdadad/
+    <param name="image_topic" value="/image_publisher_1651690145557302968/image_raw" />
+    <param name="camera_info" value="/image_publisher_1651690145557302968/camera_info" />
+    <param name="barcode_topic" value="/barcode" />
     <param name="detection_threshold" value="0.5" type="double" />
     <param name="node_type" value="service" type="string" />
     <param name="service_call" value="/shelf_classifier/returnClass" />
